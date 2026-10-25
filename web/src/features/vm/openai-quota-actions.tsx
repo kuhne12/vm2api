@@ -12,6 +12,7 @@ import { vmQueryOptions, vmsListQueryOptions } from '@/features/vm/queries'
 import { useVmPerms } from '@/features/vm/vm-perms'
 
 type QuotaPayload = {
+  credits?: Vm['codex_credits']
   reset_credits?: {
     available_count?: number
     credits?: Array<{ expires_at?: string }>
@@ -43,10 +44,16 @@ function useOpenaiQuotaActions(vm: Vm) {
     onSuccess: async (data) => {
       await refreshAll()
       const count = Number(data?.reset_credits?.available_count)
+      const credit = data?.credits
+      const creditText = credit?.unlimited
+        ? '账户积分无限'
+        : credit?.has_credits
+          ? `账户有可用积分${credit.balance ? `，余额 ${credit.balance}` : ''}`
+          : credit?.has_credits === false
+            ? '账户无可用积分'
+            : '账户积分状态未知'
       toast.success(
-        Number.isFinite(count)
-          ? `已查询，可用重置券 ${count} 张`
-          : '已刷新 GPT 额度'
+        `${creditText}；可用重置券 ${Number.isFinite(count) ? count : '未知'} 张`
       )
     },
     onError: (error: Error) => toast.error(error.message),

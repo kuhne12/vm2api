@@ -3,6 +3,7 @@
  */
 import path from 'node:path'
 import { getVm, listVms, persistCodexUsage, syncCodexQuotaSchedule } from '../vm/vm-registry.mjs'
+import { queryOpenaiQuota } from '../oauth/openai-quota.mjs'
 import { isValidVmId } from '../vm/vm-file.mjs'
 import { isCodexProtocolAllowed, isCodexVm, normalizeCodexRouting } from './codex-route.mjs'
 import { keyAllowsVm, keyScopeFromRequest, vmPoolDenial } from '../admin/key-scope.mjs'
@@ -24,6 +25,8 @@ import {
   codexCreditsFromHeaders,
   codexQuotaPark,
   CODEX_DEFAULT_PARK_MS,
+  extraToCodexSnapshot,
+  normalizeCodexLimits,
 } from './codex-usage.mjs'
 import { extractOpenaiUsage, openaiAnthropicUsageFromExtract, disjointOpenaiUsage } from './openai-usage.mjs'
 import { streamCodexKernel } from '../transport/codex-kernel-client.mjs'
@@ -272,7 +275,7 @@ export function pickCodexCandidates(
   return { ...ordered, sessionKey, stickyKeys }
 }
 
-function ingestCodexHop(projectRoot, vmId, result, now = Date.now(), policy = null) {
+async function ingestCodexHop(projectRoot, vmId, result, now = Date.now(), policy = null, fetchImpl = null) {
   const headers = result?.headers || {}
   const extra = extraFromCodexHeaders(headers, now)
   let limitedUntil = null
@@ -286,7 +289,32 @@ function ingestCodexHop(projectRoot, vmId, result, now = Date.now(), policy = nu
     quotaExceeded = String(result?.body?.error?.code || result?.error_code || '') === 'usage_limit_reached'
   }
   if (!extra && !limitedUntil && !codexCreditsFromHeaders(headers, now)) return null
-  return persistCodexUsage(projectRoot, vmId, { headers, extra, limitedUntil, quotaExceeded, now, policy })
+  const persisted = persistCodexUsage(projectRoot, vmId, { headers, extra, limitedUntil, quotaExceeded, now, policy })
+  // A 429 can represent the 5h window being full while the account still has
+  // ChatGPT credits. Refresh the authoritative usage payload before the next
+  // scheduling decision; failures keep the conservative park written above.
+  const limits = extra ? normalizeCodexLimits(extraToCodexSnapshot(extra)) : null
+  const reachedType = String(extra?.codex_rate_limit_reached_type || '')
+    .trim()
+    .toLowerCase()
+  const reachedWindowMinutes =
+    reachedType === 'primary'
+      ? Number(extra?.codex_primary_window_minutes)
+      : reachedType === 'secondary'
+        ? Number(extra?.codex_secondary_window_minutes)
+        : null
+  const fiveHourReached =
+    Number(limits?.used_5h_percent) >= 100 ||
+    /(^|[^a-z0-9])5h([^a-z0-9]|$)|five.?hour/.test(reachedType) ||
+    (Number.isFinite(reachedWindowMinutes) && reachedWindowMinutes > 0 && reachedWindowMinutes <= 360)
+  if (limitedUntil && fiveHourReached) {
+    try {
+      await queryOpenaiQuota({ projectRoot, vmId, fetchImpl, policy })
+    } catch {
+      // The upstream refusal remains authoritative when the refresh fails.
+    }
+  }
+  return persisted
 }
 
 function execFor(projectRoot, vm) {
@@ -875,7 +903,14 @@ export async function handleCodexProtocol({
           result.terminalState = 'incomplete'
           result.body = { error: conversionError }
         }
-        ingestCodexHop(projectRoot, vm.id, result, Date.now(), normalizeCodexRouting(routing.codex).quota)
+        await ingestCodexHop(
+          projectRoot,
+          vm.id,
+          result,
+          Date.now(),
+          normalizeCodexRouting(routing.codex).quota,
+          ops.fetchImpl,
+        )
         if (result?.transport_retried) logBag.transport_retried = true
         if (result?.reasoning_history_retried) {
           logBag.attempt_count += 1
@@ -1251,12 +1286,19 @@ export async function handleCodexSearch({
           refresh: ops.refresh,
         })
         logBag.upstream_status = last.status || null
-        ingestCodexHop(projectRoot, vm.id, {
-          ok: last.status >= 200 && last.status < 300,
-          status: last.status,
-          headers: last.headers || {},
-          body: parseJson(last.text),
-        })
+        await ingestCodexHop(
+          projectRoot,
+          vm.id,
+          {
+            ok: last.status >= 200 && last.status < 300,
+            status: last.status,
+            headers: last.headers || {},
+            body: parseJson(last.text),
+          },
+          Date.now(),
+          normalizeCodexRouting(routing.codex).quota,
+          ops.fetchImpl,
+        )
         if (!isSearchFailover(last)) break
       } finally {
         admitted.lease.release()
@@ -1406,12 +1448,19 @@ export async function handleCodexImages({
           refresh: ops.refresh,
         })
         logBag.upstream_status = last.status || null
-        ingestCodexHop(projectRoot, vm.id, {
-          ok: last.status >= 200 && last.status < 300,
-          status: last.status,
-          headers: last.headers || {},
-          body: parseJson(last.text),
-        })
+        await ingestCodexHop(
+          projectRoot,
+          vm.id,
+          {
+            ok: last.status >= 200 && last.status < 300,
+            status: last.status,
+            headers: last.headers || {},
+            body: parseJson(last.text),
+          },
+          Date.now(),
+          normalizeCodexRouting(routing.codex).quota,
+          ops.fetchImpl,
+        )
         if (last.status >= 200 && last.status < 300 && stickyRouter?.bind) {
           for (const key of admitted.picked.stickyKeys || []) stickyRouter.bind(key, { accountId: vm.id, vmId: vm.id })
         }

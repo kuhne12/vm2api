@@ -13,6 +13,7 @@ import { vmQueryOptions } from '@/features/vm/queries'
 import { useVmPerms } from '@/features/vm/vm-perms'
 
 type QuotaPayload = {
+  credits?: Vm['codex_credits']
   reset_credits?: {
     available_count?: number
     credits?: Array<{ expires_at?: string }>
@@ -39,9 +40,19 @@ export function OpenaiQuotaPanel({
   const qc = useQueryClient()
   const [confirm, setConfirm] = useState(false)
   const canUse = useVmPerms().credential
-  const credits = vm.reset_credits
-  const available = Math.max(0, Number(credits?.available_count) || 0)
-  const expiry = credits?.credits?.[0]?.expires_at
+  const accountCredits = vm.codex_credits
+  const resetCredits = vm.reset_credits
+  const available = Math.max(0, Number(resetCredits?.available_count) || 0)
+  const expiry = resetCredits?.credits?.[0]?.expires_at
+  const accountCreditLabel = accountCredits?.unlimited
+    ? '无限'
+    : accountCredits?.has_credits
+      ? accountCredits.balance
+        ? `有可用积分 · 余额 ${accountCredits.balance}`
+        : '有可用积分'
+      : accountCredits?.has_credits === false
+        ? '无可用积分'
+        : '未查询'
 
   const refreshAll = async () => {
     await Promise.all([
@@ -59,10 +70,16 @@ export function OpenaiQuotaPanel({
     onSuccess: async (data) => {
       await refreshAll()
       const count = Number(data?.reset_credits?.available_count)
+      const credit = data?.credits
+      const creditText = credit?.unlimited
+        ? '账户积分无限'
+        : credit?.has_credits
+          ? `账户有可用积分${credit.balance ? `，余额 ${credit.balance}` : ''}`
+          : credit?.has_credits === false
+            ? '账户无可用积分'
+            : '账户积分状态未知'
       toast.success(
-        Number.isFinite(count)
-          ? `已查询，可用重置券 ${count} 张`
-          : '已刷新 GPT 额度'
+        `${creditText}；可用重置券 ${Number.isFinite(count) ? count : '未知'} 张`
       )
     },
     onError: (error: Error) => toast.error(error.message),
@@ -107,6 +124,12 @@ export function OpenaiQuotaPanel({
       <div className='text-[11px] text-muted-foreground'>
         7d 重置 <ResetAt value={vm.reset_7d} now={now} />
       </div>
+      <div className='flex items-baseline justify-between gap-3 text-xs'>
+        <span className='text-muted-foreground'>账户积分</span>
+        <span className='text-right font-medium tabular-nums'>
+          {accountCreditLabel}
+        </span>
+      </div>
       {canUse ? (
         <div className='flex flex-wrap items-center gap-2'>
           <Button
@@ -117,7 +140,7 @@ export function OpenaiQuotaPanel({
           >
             {queryQuota.isPending
               ? '查询中…'
-              : `查询重置券${credits ? ` ${available}` : ''}`}
+              : `查询积分与重置券${resetCredits ? ` ${available}` : ''}`}
           </Button>
           <Button
             size='sm'

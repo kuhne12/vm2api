@@ -77,7 +77,7 @@ function fixture(t, codex = {}) {
   return root
 }
 
-async function hop(root, { status = 200, headers = {}, code = 'usage_limit_reached' } = {}) {
+async function hop(root, { status = 200, headers = {}, code = 'usage_limit_reached', fetchImpl = null } = {}) {
   await handleCodexProtocol({
     req: { headers: {}, apiKeyKind: 'user' },
     res: { headersSent: false, write() {}, end() {} },
@@ -91,6 +91,7 @@ async function hop(root, { status = 200, headers = {}, code = 'usage_limit_reach
     routing: {},
     projectRoot: root,
     ops: {
+      fetchImpl,
       writeCodexKernelConfig() {},
       ensureCodexKernel: async () => ({ ok: true }),
       streamCodexKernel: async () => ({
@@ -122,6 +123,15 @@ const WEEK_SPENT_HEADERS = {
   'x-codex-primary-window-minutes': '10080',
   'x-codex-primary-reset-after-seconds': String(3 * 86_400),
   'x-codex-secondary-used-percent': '20',
+  'x-codex-secondary-window-minutes': '300',
+  'x-codex-secondary-reset-after-seconds': '3600',
+}
+
+const FIVE_HOUR_SPENT_HEADERS = {
+  'x-codex-primary-used-percent': '30',
+  'x-codex-primary-window-minutes': '10080',
+  'x-codex-primary-reset-after-seconds': String(3 * 86_400),
+  'x-codex-secondary-used-percent': '100',
   'x-codex-secondary-window-minutes': '300',
   'x-codex-secondary-reset-after-seconds': '3600',
 }
@@ -301,6 +311,89 @@ test('an upstream 429 drops the credits reading and parks the slot', async (t) =
   assert.ok(Date.parse(vm.codex.extra.codex_limited_until) > Date.now() + 86_400_000)
   assert.equal(vm.temp_unschedulable_reason, 'quota_7d_header')
   assert.deepEqual(pickCodexSlots(listVms(root)).parked, ['vm-a'])
+})
+
+test('a 5h quota refusal refreshes usage and keeps a slot schedulable when credits remain', async (t) => {
+  const root = fixture(t)
+  await hop(root, {
+    status: 429,
+    headers: FIVE_HOUR_SPENT_HEADERS,
+    fetchImpl: usageFetch({
+      rate_limit: {
+        primary_window: { used_percent: 30, limit_window_seconds: 604800, reset_after_seconds: 3 * 86_400 },
+        secondary_window: { used_percent: 100, limit_window_seconds: 18_000, reset_after_seconds: 3600 },
+      },
+      credits: { has_credits: true, unlimited: false, balance: '4.25' },
+    }),
+  })
+
+  const vm = getVm(root, 'vm-a')
+  assert.equal(vm.codex.credits.balance, '4.25')
+  assert.equal(vm.codex.extra.codex_limited_until, undefined)
+  assert.equal(vm.temp_unschedulable_reason, undefined)
+  assert.deepEqual(pickCodexSlots(listVms(root)).ready, ['vm-a'])
+})
+
+test('a 5h quota refusal stays parked when the refreshed usage reports no credits', async (t) => {
+  const root = fixture(t)
+  await hop(root, {
+    status: 429,
+    headers: FIVE_HOUR_SPENT_HEADERS,
+    fetchImpl: usageFetch({
+      rate_limit: {
+        primary_window: { used_percent: 30, limit_window_seconds: 604800, reset_after_seconds: 3 * 86_400 },
+        secondary_window: { used_percent: 100, limit_window_seconds: 18_000, reset_after_seconds: 3600 },
+      },
+      credits: { has_credits: false, unlimited: false, balance: '0' },
+    }),
+  })
+
+  const vm = getVm(root, 'vm-a')
+  assert.equal(vm.codex.credits.has_credits, false)
+  assert.ok(Date.parse(vm.codex.extra.codex_limited_until) > Date.now())
+  assert.deepEqual(pickCodexSlots(listVms(root)).parked, ['vm-a'])
+})
+
+test('a failed credits refresh keeps the 5h park', async (t) => {
+  const root = fixture(t)
+  await hop(root, {
+    status: 429,
+    headers: FIVE_HOUR_SPENT_HEADERS,
+    fetchImpl: async () => {
+      throw new Error('offline')
+    },
+  })
+
+  const vm = getVm(root, 'vm-a')
+  assert.equal(vm.codex.credits, undefined)
+  assert.ok(Date.parse(vm.codex.extra.codex_limited_until) > Date.now())
+  assert.deepEqual(pickCodexSlots(listVms(root)).parked, ['vm-a'])
+})
+
+test('credits do not re-enable an operator-disabled slot after a 5h refusal', async (t) => {
+  const root = fixture(t, { extra: {}, credits: undefined })
+  const file = path.join(root, 'vms', 'vm-a.json')
+  const vm = JSON.parse(fs.readFileSync(file, 'utf8'))
+  vm.schedulable = false
+  vm.schedule_manual = true
+  fs.writeFileSync(file, JSON.stringify(vm))
+
+  await hop(root, {
+    status: 429,
+    headers: FIVE_HOUR_SPENT_HEADERS,
+    fetchImpl: usageFetch({
+      rate_limit: {
+        primary_window: { used_percent: 30, limit_window_seconds: 604800, reset_after_seconds: 3 * 86_400 },
+        secondary_window: { used_percent: 100, limit_window_seconds: 18_000, reset_after_seconds: 3600 },
+      },
+      credits: { has_credits: true, unlimited: false, balance: '4.25' },
+    }),
+  })
+
+  const stored = getVm(root, 'vm-a')
+  assert.equal(stored.schedulable, false)
+  assert.equal(stored.schedule_manual, true)
+  assert.deepEqual(pickCodexSlots(listVms(root)).ids, [])
 })
 
 test('credit-only reply headers refresh the reading', async (t) => {
