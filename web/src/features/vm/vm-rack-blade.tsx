@@ -46,8 +46,8 @@ export type RackSize = 's' | 'm' | 'l'
 
 const TIER_VARS: Record<string, CSSProperties> = {
   pro: {
-    '--tc': 'var(--tier-pro-solid)',
-    '--tf': 'var(--tier-pro-fg)',
+    '--tc': 'var(--tier-claude-solid)',
+    '--tf': 'var(--tier-claude-fg)',
   } as CSSProperties,
   max: {
     '--tc': 'var(--tier-max-solid)',

@@ -78,12 +78,12 @@ export function SlotIdentity({
   )
 }
 
-/** Console = Anthropic 陶土橙实心；OAuth = 蓝；API = 白。色值见 theme.css 的 --lane-*。 */
+/** Console / OAuth 使用 Anthropic 陶土橙；API = 白。色值见 theme.css 的 --lane-*。 */
 const LANE_CLASS: Record<CredEndpoint, string> = {
   console:
     'border-[color:var(--lane-console-bg)] bg-[color:var(--lane-console-bg)] text-[color:var(--lane-console-fg)]',
   oauth:
-    'border-[color:var(--tier-pro-border)] bg-[color:var(--tier-pro-badge-bg)] text-[color:var(--tier-pro-fg)]',
+    'border-[color:var(--tier-claude-border)] bg-[color:var(--tier-claude-badge-bg)] text-[color:var(--tier-claude-fg)]',
   api: 'border-[color:var(--lane-api-border)] bg-[color:var(--lane-api-bg)] text-[color:var(--lane-api-fg)]',
   none: 'border-border/70 text-muted-foreground',
 }

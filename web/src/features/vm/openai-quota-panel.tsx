@@ -120,8 +120,13 @@ export function OpenaiQuotaPanel({
           {accountCreditLabel}
         </span>
       </div>
+      {expiry ? (
+        <p className='m-0 text-[11px] text-muted-foreground'>
+          最近一张到期 <ResetAt value={expiry} now={now} />
+        </p>
+      ) : null}
       {canUse ? (
-        <div className='flex flex-wrap items-center gap-2'>
+        <div className='flex w-full flex-wrap items-center justify-end gap-2 pt-1'>
           <Button
             size='sm'
             variant='outline'
@@ -141,11 +146,6 @@ export function OpenaiQuotaPanel({
             {resetQuota.isPending ? '使用中…' : '使用重置券'}
           </Button>
         </div>
-      ) : null}
-      {expiry ? (
-        <p className='m-0 text-[11px] text-muted-foreground'>
-          最近一张到期 <ResetAt value={expiry} now={now} />
-        </p>
       ) : null}
       <ConfirmDialog
         open={confirm}

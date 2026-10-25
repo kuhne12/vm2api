@@ -33,9 +33,9 @@ const SKIN: Record<'pro' | 'max' | 'codex', TierVisual> = {
   pro: {
     key: 'pro',
     label: 'Pro',
-    row: 'border-l-2 border-l-[color:var(--tier-pro-border)] hover:bg-[color:var(--tier-pro-surface-hover)]',
+    row: 'border-l-2 border-l-[color:var(--tier-claude-border)] hover:bg-[color:var(--tier-claude-surface-hover)]',
     badge:
-      'bg-[color:var(--tier-pro-solid)] text-[color:var(--tier-pro-solid-fg)]',
+      'bg-[color:var(--tier-claude-solid)] text-[color:var(--tier-claude-solid-fg)]',
   },
   max: {
     key: 'max',
