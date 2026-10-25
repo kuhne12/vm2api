@@ -9,6 +9,7 @@ import {
   stopCodexKernel,
   writeCodexKernelConfig,
   shouldRecycleCodexKernel,
+  codexKernelTracked,
 } from '../../src/lib/transport/codex-kernel-supervisor.mjs'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -228,7 +229,11 @@ test('a failed Codex kernel process can start again on the next attempt', async 
   const exec = { vmId, homeDir: path.join(root, 'vms', vmId, 'cli-home'), vm: { id: vmId, runtime: {} } }
   const first = await ensureCodexKernel(exec, { timeoutMs: 300 })
   assert.equal(first.ok, false)
+  for (let i = 0; i < 200 && codexKernelTracked(vmId); i++) await new Promise((r) => setTimeout(r, 10))
+  assert.equal(codexKernelTracked(vmId), false, 'the failed process must exit before retrying')
   const second = await ensureCodexKernel(exec, { timeoutMs: 300 })
   assert.equal(second.ok, false)
+  for (let i = 0; i < 200 && codexKernelTracked(vmId); i++) await new Promise((r) => setTimeout(r, 10))
+  assert.equal(codexKernelTracked(vmId), false)
   assert.equal(fs.readFileSync(attempts, 'utf8').trim().split('\n').length, 2)
 })
