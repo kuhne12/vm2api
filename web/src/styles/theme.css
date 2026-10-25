@@ -80,7 +80,7 @@
   --status-bad-bg: var(--pink-1);
   --status-none-bg: oklch(0.932 0.007 258);
 
-  /* 账号等级轴：与状态轴正交。蓝 = Pro，紫 = Max。
+  /* 账号等级轴：与状态轴正交。橙 = Claude Pro，紫 = Max。
      border 只做 1px 行首色条；fg 给数字与 badge 文字；实测最低 5.47:1。 */
   --tier-pro-surface-hover: oklch(0.952 0.02 252);
   --tier-pro-border: oklch(0.8 0.075 252);
@@ -96,13 +96,13 @@
   --tier-max-badge-bg: oklch(0.934 0.036 308);
   --tier-max-solid: oklch(0.585 0.284 308);
   --tier-max-solid-fg: oklch(0.99 0.005 308);
-  /* GPT / Codex：绿相，和 Pro 蓝 / Max 紫正交。 */
+  /* GPT / Codex：绿相，和 Claude Pro 橙 / Max 紫正交。 */
   --tier-codex-surface-hover: oklch(0.952 0.026 155);
   --tier-codex-border: oklch(0.78 0.09 155);
   --tier-codex-fg: oklch(0.42 0.12 155);
   --tier-codex-solid: oklch(0.62 0.16 155);
   --tier-codex-solid-fg: oklch(0.16 0.03 155);
-  /* Claude platform tag: Anthropic's warm orange, distinct from Pro blue. */
+  /* Claude platform tag: Anthropic's warm orange, used by Claude Pro. */
   --tier-claude-border: oklch(0.68 0.13 41);
   --tier-claude-fg: oklch(0.46 0.12 41);
   --tier-claude-surface-hover: oklch(0.952 0.02 41);
