@@ -27,6 +27,7 @@ import {
   CODEX_DEFAULT_PARK_MS,
   extraToCodexSnapshot,
   normalizeCodexLimits,
+  hasSpendableCodexCredits,
 } from './codex-usage.mjs'
 import { extractOpenaiUsage, openaiAnthropicUsageFromExtract, disjointOpenaiUsage } from './openai-usage.mjs'
 import { streamCodexKernel } from '../transport/codex-kernel-client.mjs'
@@ -314,7 +315,12 @@ async function ingestCodexHop(projectRoot, vmId, result, now = Date.now(), polic
       // The upstream refusal remains authoritative when the refresh fails.
     }
   }
-  return persisted
+  const refreshed = getVm(projectRoot, vmId) || persisted
+  return {
+    vm: refreshed,
+    fiveHourQuotaRefusal: Boolean(limitedUntil && fiveHourReached),
+    spendableCredits: hasSpendableCodexCredits(refreshed),
+  }
 }
 
 function execFor(projectRoot, vm) {
@@ -903,7 +909,7 @@ export async function handleCodexProtocol({
           result.terminalState = 'incomplete'
           result.body = { error: conversionError }
         }
-        await ingestCodexHop(
+        const ingested = await ingestCodexHop(
           projectRoot,
           vm.id,
           result,
@@ -911,6 +917,13 @@ export async function handleCodexProtocol({
           normalizeCodexRouting(routing.codex).quota,
           ops.fetchImpl,
         )
+        // A 5h usage refusal can be bypassed by ChatGPT credits. The ingest
+        // path refreshes /wham/usage in that case and clears the persisted
+        // quota park, but the process-local 429 hold is applied below. Read
+        // the refreshed VM before creating that hold so a spendable account
+        // does not enter the rate-limit queue for the same refusal.
+        const spendableCredits = Boolean(ingested?.spendableCredits)
+        const fiveHourQuotaRefusal = Boolean(ingested?.fiveHourQuotaRefusal)
         if (result?.transport_retried) logBag.transport_retried = true
         if (result?.reasoning_history_retried) {
           logBag.attempt_count += 1
@@ -975,7 +988,7 @@ export async function handleCodexProtocol({
         }
         reportOpenAIAttempt(vm.id, attemptKind, result?.ttftMs ?? null)
         const failureHold = codexFailureHold(result)
-        if (failureHold) holdOpenAIAccount(vm.id, failureHold)
+        if (failureHold && !(fiveHourQuotaRefusal && spendableCredits)) holdOpenAIAccount(vm.id, failureHold)
         if (res.headersSent || hopEmitted) {
           stats.errors++
           logBag.error_code = result?.body?.error?.code || 'codex_upstream'

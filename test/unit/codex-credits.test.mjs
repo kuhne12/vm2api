@@ -21,7 +21,7 @@ import {
   pickCodexSlots,
 } from '../../src/lib/pool/codex-slot-pool.mjs'
 import { evaluateOpenAIQuotaGate } from '../../src/lib/pool/openai-quota-policy.mjs'
-import { resetOpenAIAccountRuntime } from '../../src/lib/pool/openai-account-runtime.mjs'
+import { openAIAccountHold, resetOpenAIAccountRuntime } from '../../src/lib/pool/openai-account-runtime.mjs'
 
 beforeEach(() => resetOpenAIAccountRuntime())
 
@@ -332,6 +332,22 @@ test('a 5h quota refusal refreshes usage and keeps a slot schedulable when credi
   assert.equal(vm.codex.extra.codex_limited_until, undefined)
   assert.equal(vm.temp_unschedulable_reason, undefined)
   assert.deepEqual(pickCodexSlots(listVms(root)).ready, ['vm-a'])
+})
+
+test('a 5h quota refusal with credits does not leave a process-local rate-limit hold', async (t) => {
+  const root = fixture(t)
+  await hop(root, {
+    status: 429,
+    headers: FIVE_HOUR_SPENT_HEADERS,
+    fetchImpl: usageFetch({
+      rate_limit: {
+        primary_window: { used_percent: 30, limit_window_seconds: 604800, reset_after_seconds: 3 * 86_400 },
+        secondary_window: { used_percent: 100, limit_window_seconds: 18_000, reset_after_seconds: 3600 },
+      },
+      credits: { has_credits: true, unlimited: false, balance: '4.25' },
+    }),
+  })
+  assert.equal(openAIAccountHold('vm-a'), null)
 })
 
 test('a 5h quota refusal stays parked when the refreshed usage reports no credits', async (t) => {
