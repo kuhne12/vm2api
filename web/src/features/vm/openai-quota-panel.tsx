@@ -44,15 +44,9 @@ export function OpenaiQuotaPanel({
   const resetCredits = vm.reset_credits
   const available = Math.max(0, Number(resetCredits?.available_count) || 0)
   const expiry = resetCredits?.credits?.[0]?.expires_at
-  const accountCreditLabel = accountCredits?.unlimited
-    ? '无限'
-    : accountCredits?.has_credits
-      ? accountCredits.balance
-        ? `有可用积分 · 余额 ${accountCredits.balance}`
-        : '有可用积分'
-      : accountCredits?.has_credits === false
-        ? '无可用积分'
-        : '未查询'
+  const accountCreditLabel = accountCredits
+    ? `${accountCredits.unlimited ? '无限积分' : accountCredits.has_credits ? '可用积分' : '已用尽'} · 余额 ${accountCredits.balance ?? '未知'}`
+    : '未查询'
 
   const refreshAll = async () => {
     await Promise.all([
@@ -71,13 +65,9 @@ export function OpenaiQuotaPanel({
       await refreshAll()
       const count = Number(data?.reset_credits?.available_count)
       const credit = data?.credits
-      const creditText = credit?.unlimited
-        ? '账户积分无限'
-        : credit?.has_credits
-          ? `账户有可用积分${credit.balance ? `，余额 ${credit.balance}` : ''}`
-          : credit?.has_credits === false
-            ? '账户无可用积分'
-            : '账户积分状态未知'
+      const creditText = credit
+        ? `${credit.unlimited ? '账户积分无限' : credit.has_credits ? '账户积分可用' : '账户积分已用尽'}，余额 ${credit.balance ?? '未知'}`
+        : '账户积分状态未知'
       toast.success(
         `${creditText}；可用重置券 ${Number.isFinite(count) ? count : '未知'} 张`
       )

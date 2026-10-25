@@ -102,6 +102,9 @@
   --tier-codex-fg: oklch(0.42 0.12 155);
   --tier-codex-solid: oklch(0.62 0.16 155);
   --tier-codex-solid-fg: oklch(0.16 0.03 155);
+  /* Claude platform tag: Anthropic's warm orange, distinct from Pro blue. */
+  --tier-claude-border: oklch(0.68 0.13 41);
+  --tier-claude-fg: oklch(0.46 0.12 41);
   /* 调用形式标签（类型列）。Console 用 Anthropic 品牌的陶土橙实心块——它是
      线上绝大多数槽的形式，也是要被一眼认出来的那一类；深色字压在橙底上 6:1。
      OAuth 复用 tier-pro 蓝；API 是白：浅色主题下白底需要描边才成立。 */
@@ -236,6 +239,8 @@
   --tier-codex-fg: oklch(0.82 0.11 155);
   --tier-codex-solid: oklch(0.72 0.16 155);
   --tier-codex-solid-fg: oklch(0.14 0.03 155);
+  --tier-claude-border: oklch(0.68 0.13 41);
+  --tier-claude-fg: oklch(0.78 0.13 41);
   --lane-console-bg: oklch(0.68 0.13 41);
   --lane-console-fg: oklch(0.16 0.03 41);
   --lane-api-bg: oklch(1 0 0 / 12%);

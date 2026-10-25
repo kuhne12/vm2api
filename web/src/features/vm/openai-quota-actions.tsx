@@ -45,13 +45,9 @@ function useOpenaiQuotaActions(vm: Vm) {
       await refreshAll()
       const count = Number(data?.reset_credits?.available_count)
       const credit = data?.credits
-      const creditText = credit?.unlimited
-        ? '账户积分无限'
-        : credit?.has_credits
-          ? `账户有可用积分${credit.balance ? `，余额 ${credit.balance}` : ''}`
-          : credit?.has_credits === false
-            ? '账户无可用积分'
-            : '账户积分状态未知'
+      const creditText = credit
+        ? `${credit.unlimited ? '账户积分无限' : credit.has_credits ? '账户积分可用' : '账户积分已用尽'}，余额 ${credit.balance ?? '未知'}`
+        : '账户积分状态未知'
       toast.success(
         `${creditText}；可用重置券 ${Number.isFinite(count) ? count : '未知'} 张`
       )
@@ -106,6 +102,10 @@ export function OpenaiQuotaActions({
     setConfirm,
   } = useOpenaiQuotaActions(vm)
   const canUse = useVmPerms().credential
+  const accountCredits = vm.codex_credits
+  const accountCreditLabel = accountCredits
+    ? `${accountCredits.unlimited ? '无限' : accountCredits.has_credits ? '可用' : '已用尽'} · ${accountCredits.balance ?? '未知'}`
+    : '未查询'
 
   if (!canUse) return null
 
@@ -116,6 +116,12 @@ export function OpenaiQuotaActions({
       onClick={(event) => event.stopPropagation()}
       onKeyDown={(event) => event.stopPropagation()}
     >
+      <span
+        className='text-[11px] text-muted-foreground tabular-nums'
+        title='ChatGPT 账户积分余额'
+      >
+        积分 {accountCreditLabel}
+      </span>
       <Button
         size='sm'
         variant={compact ? 'ghost' : 'outline'}
