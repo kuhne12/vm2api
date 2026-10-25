@@ -714,7 +714,18 @@ export function writeKernelConfig(
     if (host.native) return null
     throw err
   }
-  const claudeBin = envBin || (dataplane === 'wrap' ? host.bins.cli : host.bins.cc)
+  // Explicit per-slot opt-in: run the same wrap bundle on native ARM64 Bun.
+  // Keep it outside cli-node, which payload synchronization replaces.
+  const nativeCliDir = path.join(homeDir, '.kin', 'native-arm64')
+  const nativeCliEnabled =
+    !host.native &&
+    process.arch === 'arm64' &&
+    dataplane === 'wrap' &&
+    fs.existsSync(path.join(nativeCliDir, 'enabled')) &&
+    fs.existsSync(path.join(nativeCliDir, 'cli'))
+  const claudeBin =
+    envBin ||
+    (nativeCliEnabled ? '/home/kincli/.kin/native-arm64/cli' : dataplane === 'wrap' ? host.bins.cli : host.bins.cc)
   const tz = String(timezone || vm.timezone || previous.timezone || '').trim()
   const defaultCacheTtl = routing != null ? cacheTtlFromRouting(routing) : normalizeCacheTtl(previous.default_cache_ttl)
   const previousIdleSeconds = Number(previous.idle_timeout_seconds)

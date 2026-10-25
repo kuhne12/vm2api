@@ -202,7 +202,7 @@ export async function ensureCodexKernel(exec, { timeoutMs = 8000 } = {}) {
   const live = await waitForHealth(exec, Math.min(800, Math.max(200, Number(timeoutMs) || 800)))
   if (live.ok) return { ok: true, reused: true, health: live.health }
   const current = starts.get(exec.vmId)
-  if (current && !current.killed) return waitForHealth(exec, timeoutMs)
+  if (!childHasExited(current) && !current.killed) return waitForHealth(exec, timeoutMs)
   try {
     if (paths.socketPath) fs.unlinkSync(paths.socketPath)
   } catch {}
@@ -213,6 +213,14 @@ export async function ensureCodexKernel(exec, { timeoutMs = 8000 } = {}) {
   })
   child.unref()
   starts.set(exec.vmId, child)
+  child.once('error', (error) => {
+    console.error(JSON.stringify({ event: 'codex-kernel-start-failed', vm_id: exec.vmId, code: error.code || null }))
+  })
+  child.once('exit', (code, signal) => {
+    if (code != null && code !== 0) {
+      console.error(JSON.stringify({ event: 'codex-kernel-exited', vm_id: exec.vmId, exit_code: code, signal }))
+    }
+  })
   writeLimitStamp(paths.configPath, wanted)
   return waitForHealth(exec, timeoutMs)
 }

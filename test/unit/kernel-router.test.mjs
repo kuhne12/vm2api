@@ -639,6 +639,36 @@ test('writeKernelConfig separates container paths from host socket paths', () =>
   fs.rmSync(root, { recursive: true, force: true })
 })
 
+test('writeKernelConfig preserves an opted-in native ARM64 wrap CLI across rewrites', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kin-native-arm64-cfg-'))
+  const nativeDir = path.join(root, 'vms', 'vm-09', 'cli-home', '.kin', 'native-arm64')
+  const previous = process.env.KIN_CLAUDE_BIN
+  delete process.env.KIN_CLAUDE_BIN
+  const bin = (dataplane = 'wrap') =>
+    JSON.parse(fs.readFileSync(writeKernelConfig(root, { id: 'vm-09', dataplane }, { token: 'tok' }).configPath))
+      .claude_bin
+  try {
+    fs.mkdirSync(nativeDir, { recursive: true })
+    fs.writeFileSync(path.join(nativeDir, 'cli'), '#!/bin/sh\n')
+    assert.equal(bin(), '/home/kincli/.kin/cli-node')
+    fs.writeFileSync(path.join(nativeDir, 'enabled'), '1\n')
+    const expected = process.arch === 'arm64' ? '/home/kincli/.kin/native-arm64/cli' : '/home/kincli/.kin/cli-node'
+    assert.equal(bin(), expected)
+    assert.equal(bin(), expected)
+    assert.equal(bin('cc'), '/home/kincli/.kin/cc-node')
+    assert.equal(bin('crag'), '/home/kincli/.kin/cc-node')
+    process.env.KIN_CLAUDE_BIN = '/custom/cli'
+    assert.equal(bin(), '/custom/cli')
+    delete process.env.KIN_CLAUDE_BIN
+    fs.unlinkSync(path.join(nativeDir, 'enabled'))
+    assert.equal(bin(), '/home/kincli/.kin/cli-node')
+  } finally {
+    if (previous == null) delete process.env.KIN_CLAUDE_BIN
+    else process.env.KIN_CLAUDE_BIN = previous
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('writeKernelConfig idle timeout follows the panel stream idle timeout', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kin-kernel-idle-cfg-'))
   const prev = process.env.KIN_STREAM_IDLE_TIMEOUT

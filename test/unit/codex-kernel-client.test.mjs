@@ -213,3 +213,22 @@ test('codex kernel starts without inherited proxy variables', async (t) => {
     [],
   )
 })
+
+test('a failed Codex kernel process can start again on the next attempt', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kin-codex-retry-'))
+  const vmId = 'vm-codex-retry'
+  t.after(() => {
+    stopCodexKernel(vmId)
+    fs.rmSync(root, { recursive: true, force: true })
+  })
+  const attempts = path.join(root, 'attempts')
+  const bin = path.join(root, 'fake-kernel')
+  fs.writeFileSync(bin, `#!/bin/sh\nprintf 'start\n' >> "${attempts}"\nexit 1\n`, { mode: 0o755 })
+  setEnv(t, { KIN_CODEX_KERNEL_BIN: bin })
+  const exec = { vmId, homeDir: path.join(root, 'vms', vmId, 'cli-home'), vm: { id: vmId, runtime: {} } }
+  const first = await ensureCodexKernel(exec, { timeoutMs: 300 })
+  assert.equal(first.ok, false)
+  const second = await ensureCodexKernel(exec, { timeoutMs: 300 })
+  assert.equal(second.ok, false)
+  assert.equal(fs.readFileSync(attempts, 'utf8').trim().split('\n').length, 2)
+})

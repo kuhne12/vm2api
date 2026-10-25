@@ -1,0 +1,17 @@
+# ARM64 source deployment using the existing installation's data directories.
+# Unlike docker-compose.arm64.yml, this keeps ./data, ./vms, ./bin and ./share.
+# Copy the installation's current src/config into .local/fork-config before use.
+services:
+  vm2api:
+    image: vm2api-fork:${VM2API_FORK_TAG:-local}
+    platform: linux/arm64
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.arm64-control
+    environment:
+      DOCKER_DEFAULT_PLATFORM: linux/amd64
+      KIN_CLUSTER_WORKER_BIN: /opt/vm2api/cluster-bin-amd64/kin-worker
+      KIN_CLUSTER_EGRESS_BIN: /opt/vm2api/cluster-bin-amd64/kin-egress
+      KIN_CLUSTER_GATE_BIN: /opt/vm2api/cluster-bin-amd64/kin-slot-gate
+    volumes:
+      - ./.local/fork-config:/opt/vm2api/src/config
