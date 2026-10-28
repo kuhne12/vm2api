@@ -109,8 +109,11 @@ export function getGptModelPolicy() {
 }
 
 export function saveGptModelPolicy(next) {
+  if (!loaded) loadGptModelPolicy()
   const seed = seedGptPolicy()
-  const models = { ...(seed.models || {}) }
+  // Keep rows discovered since the panel draft was loaded, and never restore
+  // fallback seed ids into an established live catalog.
+  const models = { ...policy.models }
   if (next?.models && typeof next.models === 'object') {
     for (const [id, row] of Object.entries(next.models)) {
       if (!isGptSeriesId(id) || !row || typeof row !== 'object') continue
@@ -186,7 +189,10 @@ export function resetGptModelPolicy() {
 }
 
 /**
- * Replace the GPT catalog with the live Codex list. Existing rows keep their edits;
+ * Merge each account's live Codex list into the shared GPT catalog. A slot can
+ * see only part of the catalog; absent ids must retain their rows and switches.
+ * The seed is only a fallback until the first successful live sync.
+ * Existing rows keep their edits;
  * a GPT id the policy has never seen starts disabled until the admin enables it
  * (GPT has no worker_only mode).
  */
@@ -207,7 +213,7 @@ export function syncGptIdsIntoPolicy(ids = [], { displayNameOf = null } = {}) {
   if (!live.length) {
     return { ok: true, synced: 0, added: [], ids: listGptPolicyModels().map((m) => m.id) }
   }
-  const next = {}
+  const next = policy.source === 'seed' ? {} : { ...policy.models }
   const added = []
   for (const row of live) {
     const prev = policy.models[row.id]

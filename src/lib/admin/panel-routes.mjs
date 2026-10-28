@@ -3189,7 +3189,7 @@ export function createPanelHandler(ctx) {
         if (vmId && userMissesVmId(req, cfg.paths.project, vmId)) {
           return json(res, 404, { ok: false, error: { message: 'vm not found' } })
         }
-        // A live refresh rewrites the shared Codex catalog; only admins may trigger it.
+        // A live refresh updates the shared Codex catalog; only admins may trigger it.
         const refresh =
           panelIdentity(req).role === 'admin' &&
           (url.searchParams.get('refresh') === '1' || url.searchParams.get('refresh') === 'true')

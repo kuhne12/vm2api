@@ -95,7 +95,8 @@ test('image models never enter the GPT chat catalog', (t) => {
   saveGptModelPolicy({ models: { 'gpt-image-2.5-flare': { enabled: true } } })
   assert.equal(getGptModelPolicy().models['gpt-image-2.5-flare'], undefined)
   const synced = syncGptIdsIntoPolicy([{ id: 'gpt-6-luna' }, { id: 'gpt-image-2.5-flare' }])
-  assert.deepEqual(synced.ids, ['gpt-6-luna'])
+  assert.ok(synced.ids.includes('gpt-6-luna'))
+  assert.ok(!synced.ids.includes('gpt-image-2.5-flare'))
 })
 
 test('sync stores catalog metadata and replaces it on the next sync', (t) => {
@@ -134,4 +135,41 @@ test('panel save keeps the synced catalog; only a sync writes it', (t) => {
   assert.equal(getGptModelPolicy().models['gpt-6-luna'].catalog.context_window, 272000)
   saveGptModelPolicy({ models: { 'gpt-7': { enabled: true, catalog: { context_window: 9 } } } })
   assert.equal(getGptModelPolicy().models['gpt-7'].catalog, undefined)
+})
+
+test('a narrower account catalog preserves known models and admin switches across reloads', (t) => {
+  withDb(t)
+  syncGptIdsIntoPolicy(['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-luna'])
+  saveGptModelPolicy({
+    models: {
+      'gpt-6.1-sol': { enabled: true, sort: 12, aliases: ['sol'] },
+      'gpt-6-astra': { enabled: false },
+      'gpt-6-luna': { enabled: false },
+    },
+  })
+  const before = structuredClone(getGptModelPolicy().models['gpt-6.1-sol'])
+  syncGptIdsIntoPolicy(['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-luna'])
+  const narrow = syncGptIdsIntoPolicy(['gpt-6-luna', 'gpt-7-preview'])
+  assert.deepEqual(narrow.added, ['gpt-7-preview'])
+  assert.ok(narrow.ids.includes('gpt-6.1-sol'))
+  loadGptModelPolicy({ force: true })
+  assert.deepEqual(getGptModelPolicy().models['gpt-6.1-sol'], before)
+  assert.equal(getGptModelPolicy().models['gpt-6-astra'].enabled, false)
+  const wide = syncGptIdsIntoPolicy(['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-luna'])
+  assert.deepEqual(wide.added, [])
+  assert.equal(getGptModelPolicy().models['gpt-6.1-sol'].enabled, true)
+  assert.equal(getGptModelPolicy().models['gpt-6-astra'].enabled, false)
+  assert.equal(getGptModelPolicy().models['gpt-7-preview'].enabled, false)
+})
+
+test('saving a draft from a narrower catalog keeps models discovered after the draft', (t) => {
+  withDb(t)
+  syncGptIdsIntoPolicy(['gpt-6-luna'])
+  const draft = structuredClone(getGptModelPolicy())
+  syncGptIdsIntoPolicy([{ id: 'gpt-6.1-sol', catalog: { context_window: 1000000 } }])
+  saveGptModelPolicy(draft)
+  const models = getGptModelPolicy().models
+  assert.equal(models['gpt-6.1-sol'].enabled, false)
+  assert.equal(models['gpt-6.1-sol'].catalog.context_window, 1000000)
+  assert.equal(models['gpt-5.4'], undefined, 'live policy must not reintroduce seed models')
 })
