@@ -7,6 +7,7 @@ import { handleCodexSearch } from '../../src/lib/protocol/handle-codex.mjs'
 import { CODEX_APP_VERSION, CODEX_SEARCH_URL } from '../../src/lib/protocol/codex-models.mjs'
 import { readCodexAccounts } from '../../src/lib/vm/codex-slot.mjs'
 import { getVm } from '../../src/lib/vm/vm-registry.mjs'
+import { CHATGPT_USAGE_URL } from '../../src/lib/oauth/openai-quota.mjs'
 import { resetOpenAIAccountRuntime } from '../../src/lib/pool/openai-account-runtime.mjs'
 import { Readable } from 'node:stream'
 import { readBody } from '../../src/lib/http/respond.mjs'
@@ -104,7 +105,13 @@ test('search moves to the next GPT slot on a usage-limit 429 and parks the first
   writeGptVm(root, 'vm-gpt-a')
   writeGptVm(root, 'vm-gpt-b')
   const seen = []
-  const fetchImpl = async (_url, init) => {
+  let usageQueries = 0
+  const fetchImpl = async (url, init) => {
+    if (url === CHATGPT_USAGE_URL) {
+      usageQueries += 1
+      return upstream(200, { credits: { has_credits: false, unlimited: false, balance: '0' } })
+    }
+    if (url !== CODEX_SEARCH_URL) return upstream(200, [])
     const account = init.headers['chatgpt-account-id']
     seen.push(account)
     if (account === 'vm-gpt-a') {
@@ -120,6 +127,7 @@ test('search moves to the next GPT slot on a usage-limit 429 and parks the first
   assert.equal(res.statusCode, 200)
   assert.equal(res.body.output, 'from b')
   assert.equal(seen.length, 2)
+  assert.equal(usageQueries, 1)
   assert.equal(seen.at(-1), 'vm-gpt-b')
   assert.equal(logBag.attempt_count, 2)
   assert.equal(logBag.vm_id, 'vm-gpt-b')

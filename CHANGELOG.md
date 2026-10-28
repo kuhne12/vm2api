@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 修复 GPT 账号仍有积分却在 5H / 7D 用尽后反复出池：已确认可用的积分不再因闲置超过 10 分钟失效；5H、7D 及不带窗口头的额度拒绝均复查官方积分，有积分时清除额度限制并避免重复写入限流冷却。人工关闭、无积分和复查失败仍保持原有限制。
+
 ## 1.3.226 — 2026-10-24
 
 - 协议 / billing（#698）：调用方自带的 billing 不再改写 `cc_entrypoint`；网关生成或 cli-node 缺失 billing 时的补头仍为 `cc_entrypoint=sdk-cli`，并带上 `cc_turn_origin` 与轮次索引。文档明确 CCH 密封块属于 billing body、非 User-Agent；补充 crs-persona 与面板协议页回归测试。

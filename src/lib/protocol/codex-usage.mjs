@@ -88,12 +88,6 @@ export function codexQuotaPark(extra = {}, now = Date.now(), { waiveWindowCaps =
   return { limited: until != null, until }
 }
 
-/**
- * How long a credits reading may waive the window caps. Each Responses reply
- * refreshes it, so only an idle or parked slot ages out.
- */
-export const CODEX_CREDITS_TTL_MS = 10 * 60_000
-
 function flag(value) {
   if (typeof value === 'boolean') return value
   const text = String(value ?? '')
@@ -141,13 +135,15 @@ export function codexCreditsFromHeaders(headers = {}, now = Date.now()) {
 }
 
 /**
- * A fresh reading that says the account can still buy past its 5h/7d windows.
- * It only earns the slot another try; the upstream 429 stays the authority.
+ * Last confirmed credit eligibility survives idle time and replies without
+ * credit headers. Expiring it locally can strand a capped slot: no traffic
+ * means no new headers to reopen it. A newer credit reading or an upstream
+ * refusal invalidates it; explicit parks still take precedence.
  */
-export function hasSpendableCodexCredits(vm, now = Date.now()) {
+export function hasSpendableCodexCredits(vm) {
   const credits = vm?.codex?.credits ?? vm?.codex_credits
   const fetchedAt = Date.parse(credits?.fetched_at || '')
-  if (!Number.isFinite(fetchedAt) || now - fetchedAt > CODEX_CREDITS_TTL_MS) return false
+  if (!Number.isFinite(fetchedAt)) return false
   return credits.unlimited === true || credits.has_credits === true
 }
 

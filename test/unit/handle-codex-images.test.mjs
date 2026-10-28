@@ -1,4 +1,5 @@
 import { test, beforeEach, afterEach } from 'node:test'
+import { CHATGPT_USAGE_URL, CHATGPT_RESET_CREDITS_URL } from '../../src/lib/oauth/openai-quota.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -180,7 +181,11 @@ test('a 429 moves to the next slot', async () => {
   const seen = []
   const { res } = await images({
     ops: {
-      fetchImpl: async (_url, init) => {
+      fetchImpl: async (url, init) => {
+        if (url === CHATGPT_USAGE_URL) {
+          return upstream(200, { credits: { has_credits: false, unlimited: false, balance: '0' } })
+        }
+        if (url === CHATGPT_RESET_CREDITS_URL) return upstream(200, [])
         const id = init.headers['chatgpt-account-id']
         seen.push(id)
         return seen.length === 1

@@ -291,24 +291,19 @@ async function ingestCodexHop(projectRoot, vmId, result, now = Date.now(), polic
   }
   if (!extra && !limitedUntil && !codexCreditsFromHeaders(headers, now)) return null
   const persisted = persistCodexUsage(projectRoot, vmId, { headers, extra, limitedUntil, quotaExceeded, now, policy })
-  // A 429 can represent the 5h window being full while the account still has
-  // ChatGPT credits. Refresh the authoritative usage payload before the next
-  // scheduling decision; failures keep the conservative park written above.
+  // Either window (or a headerless usage_limit_reached) can be exhausted
+  // while ChatGPT credits remain. Reconcile before the next scheduling
+  // decision; failures keep the conservative park written above.
   const limits = extra ? normalizeCodexLimits(extraToCodexSnapshot(extra)) : null
   const reachedType = String(extra?.codex_rate_limit_reached_type || '')
     .trim()
     .toLowerCase()
-  const reachedWindowMinutes =
-    reachedType === 'primary'
-      ? Number(extra?.codex_primary_window_minutes)
-      : reachedType === 'secondary'
-        ? Number(extra?.codex_secondary_window_minutes)
-        : null
-  const fiveHourReached =
+  const windowReached =
     Number(limits?.used_5h_percent) >= 100 ||
-    /(^|[^a-z0-9])5h([^a-z0-9]|$)|five.?hour/.test(reachedType) ||
-    (Number.isFinite(reachedWindowMinutes) && reachedWindowMinutes > 0 && reachedWindowMinutes <= 360)
-  if (limitedUntil && fiveHourReached) {
+    Number(limits?.used_7d_percent) >= 100 ||
+    /^(primary|secondary)$|(^|[^a-z0-9])(5h|7d)([^a-z0-9]|$)|five.?hour|seven.?day/.test(reachedType)
+  const quotaRefusal = Boolean(limitedUntil && (quotaExceeded || windowReached))
+  if (quotaRefusal) {
     try {
       await queryOpenaiQuota({ projectRoot, vmId, fetchImpl, policy })
     } catch {
@@ -318,7 +313,7 @@ async function ingestCodexHop(projectRoot, vmId, result, now = Date.now(), polic
   const refreshed = getVm(projectRoot, vmId) || persisted
   return {
     vm: refreshed,
-    fiveHourQuotaRefusal: Boolean(limitedUntil && fiveHourReached),
+    quotaRefusal,
     spendableCredits: hasSpendableCodexCredits(refreshed),
   }
 }
@@ -917,13 +912,13 @@ export async function handleCodexProtocol({
           normalizeCodexRouting(routing.codex).quota,
           ops.fetchImpl,
         )
-        // A 5h usage refusal can be bypassed by ChatGPT credits. The ingest
+        // A window usage refusal can be bypassed by ChatGPT credits. The ingest
         // path refreshes /wham/usage in that case and clears the persisted
         // quota park, but the process-local 429 hold is applied below. Read
         // the refreshed VM before creating that hold so a spendable account
         // does not enter the rate-limit queue for the same refusal.
         const spendableCredits = Boolean(ingested?.spendableCredits)
-        const fiveHourQuotaRefusal = Boolean(ingested?.fiveHourQuotaRefusal)
+        const quotaRefusal = Boolean(ingested?.quotaRefusal)
         if (result?.transport_retried) logBag.transport_retried = true
         if (result?.reasoning_history_retried) {
           logBag.attempt_count += 1
@@ -988,7 +983,7 @@ export async function handleCodexProtocol({
         }
         reportOpenAIAttempt(vm.id, attemptKind, result?.ttftMs ?? null)
         const failureHold = codexFailureHold(result)
-        if (failureHold && !(fiveHourQuotaRefusal && spendableCredits)) holdOpenAIAccount(vm.id, failureHold)
+        if (failureHold && !(quotaRefusal && spendableCredits)) holdOpenAIAccount(vm.id, failureHold)
         if (res.headersSent || hopEmitted) {
           stats.errors++
           logBag.error_code = result?.body?.error?.code || 'codex_upstream'

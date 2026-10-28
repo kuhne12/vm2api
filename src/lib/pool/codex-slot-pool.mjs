@@ -438,7 +438,11 @@ export function evaluateCodexQuotaSchedule(vm, now = Date.now(), policy = null) 
     const until = hardReason ? codexRestrictionUntil(vm, now) : local.until
     return { action: leftover ? 'restore' : 'restrict', reason, until }
   }
-  if (policy == null && /_local$/.test(vm?.claude?.temp_unschedulable_reason || vm?.temp_unschedulable_reason || '')) {
+  if (
+    policy == null &&
+    !hasSpendableCodexCredits(vm, now) &&
+    /_local$/.test(vm?.claude?.temp_unschedulable_reason || vm?.temp_unschedulable_reason || '')
+  ) {
     return { action: 'keep', reason: vm?.claude?.temp_unschedulable_reason || vm?.temp_unschedulable_reason }
   }
   if (leftover) return { action: 'enable', reason: null }
